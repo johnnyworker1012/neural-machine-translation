@@ -8,7 +8,7 @@ from typing import List, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.nn.utils
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence 
 from model_embeddings import ModelEmbeddings
 
 Hypothesis = namedtuple('Hypothesis', ['value', 'score'])
@@ -152,8 +152,7 @@ class NMT(nn.Module):
         ###             `last_cell` is a tensor shape (2, b, h). The first dimension corresponds to forwards and backwards.
         ###             Concatenate the forwards and backwards tensors to obtain a tensor shape (b, 2*h).
         ###             Apply the c_projection layer to this in order to compute init_decoder_cell.
-        ###             This is c_0^{dec} in the PDF. Here b = batch size, h = hidden size
-        ###
+        ###             This is c_0^{dec} in the PDF. Here b = batch size, h = hidden size   
         ### See the following docs, as you may need to use some of the following functions in your implementation:
         ###     Pack the padded sequence X before passing to the encoder:
         ###         https://pytorch.org/docs/stable/nn.html#torch.nn.utils.rnn.pack_padded_sequence
@@ -163,7 +162,16 @@ class NMT(nn.Module):
         ###         https://pytorch.org/docs/stable/torch.html#torch.cat
         ###     Tensor Permute:
         ###         https://pytorch.org/docs/stable/tensors.html#torch.Tensor.permute
-
+        embeddings = self.model_embeddings.source(source_padded)
+        X = pack_padded_sequence(embeddings, torch.Tensor(source_lengths))
+        enc_hiddens, (last_hidden, last_cell) = self.encoder(X)
+        enc_hiddens = pad_packed_sequence(enc_hiddens)[0]
+        enc_hiddens = enc_hiddens.permute(1, 0, 2)
+        
+        init_decoder_hidden = self.h_projection(torch.cat((last_hidden[0], last_hidden[1]), 1))
+        init_decoder_cell = self.c_projection(torch.cat((last_cell[0], last_cell[1]), 1))
+        dec_init_state = (init_decoder_hidden, init_decoder_cell)
+        dec_init_state = (init_decoder_hidden, init_decoder_cell)
         ### END YOUR CODE
 
         return enc_hiddens, dec_init_state
